@@ -9,9 +9,12 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from ai import ask_about_photo, look_at_photo
-from camera import take_photo
 from logging_config import setup_logging
+from services import (
+    analyze_photo,
+    capture_photo,
+    describe_photo,
+)
 
 
 load_dotenv()
@@ -27,9 +30,11 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    user_id = update.effective_user.id
+
     logger.info(
         "Received /start from user %s",
-        update.effective_user.id,
+        user_id,
     )
 
     await update.message.reply_text(
@@ -56,12 +61,7 @@ async def photo(
             "Taking a photo..."
         )
 
-        photo_path = take_photo()
-
-        logger.info(
-            "Photo captured: %s",
-            photo_path,
-        )
+        photo_path = capture_photo()
 
         with photo_path.open("rb") as photo_file:
             await update.message.reply_photo(
@@ -100,18 +100,15 @@ async def look(
             "Taking a photo..."
         )
 
-        photo_path = take_photo()
-
-        logger.info(
-            "Photo captured for /look: %s",
-            photo_path,
-        )
+        photo_path = capture_photo()
 
         await update.message.reply_text(
             "Analyzing the photo..."
         )
 
-        description = look_at_photo(photo_path)
+        description = describe_photo(
+            photo_path
+        )
 
         logger.info(
             "AI analysis completed for user %s",
@@ -139,7 +136,9 @@ async def ask(
 ):
     user_id = update.effective_user.id
 
-    question = " ".join(context.args).strip()
+    question = " ".join(
+        context.args
+    ).strip()
 
     if not question:
         logger.info(
@@ -166,18 +165,13 @@ async def ask(
             "Taking a photo..."
         )
 
-        photo_path = take_photo()
-
-        logger.info(
-            "Photo captured for /ask: %s",
-            photo_path,
-        )
+        photo_path = capture_photo()
 
         await update.message.reply_text(
             "Analyzing the photo..."
         )
 
-        answer = ask_about_photo(
+        answer = analyze_photo(
             photo_path,
             question,
         )
