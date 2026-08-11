@@ -4,17 +4,15 @@ from io import BytesIO
 from pathlib import Path
 
 from dotenv import load_dotenv
-from PIL import Image
 from openai import OpenAI
+from PIL import Image
+
+from config import AI_IMAGE_SIZE, JPEG_QUALITY, MODEL
 
 
 load_dotenv()
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-
-AI_IMAGE_SIZE = (768, 432)
-JPEG_QUALITY = 85
 
 
 def image_to_base64(photo_path: Path) -> str:
@@ -37,7 +35,7 @@ def ask_about_photo(photo_path: Path, question: str) -> str:
     image_data = image_to_base64(photo_path)
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=MODEL,
         input=[
             {
                 "role": "user",
@@ -59,11 +57,12 @@ def ask_about_photo(photo_path: Path, question: str) -> str:
 
     return response.output_text
 
+
 def look_at_photo(photo_path: Path) -> str:
     image_data = image_to_base64(photo_path)
 
     response = client.responses.create(
-        model="gpt-5-mini",
+        model=MODEL,
         input=[
             {
                 "role": "user",
