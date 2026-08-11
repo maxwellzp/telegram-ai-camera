@@ -1,3 +1,5 @@
 .venv/
 photos/
 terminal.txt
+.env
+__pycache__/
