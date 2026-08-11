@@ -3,3 +3,4 @@ photos/
 terminal.txt
 .env
 __pycache__/
+vision_pi.log
