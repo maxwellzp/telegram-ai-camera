@@ -2,8 +2,7 @@ from pathlib import Path
 
 from picamera2 import Picamera2
 
-PHOTO_DIR = Path("photos")
-PHOTO_DIR.mkdir(exist_ok=True)
+from config import PHOTO_DIR
 
 
 def take_photo(filename: str = "test.jpg") -> Path:
