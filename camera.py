@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from picamera2 import Picamera2
+from libcamera import Transform
 
 from config import PHOTO_DIR
 
@@ -11,7 +12,7 @@ def take_photo(filename: str = "test.jpg") -> Path:
     camera = Picamera2()
 
     config = camera.create_still_configuration(
-        main={"size": (2304, 1296)}
+        main={"size": (2304, 1296)}, transform=Transform(vflip=1)
     )
 
     camera.configure(config)
