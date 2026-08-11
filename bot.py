@@ -1,9 +1,7 @@
+import logging
 import os
 
 from dotenv import load_dotenv
-
-load_dotenv()
-
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -11,9 +9,16 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from camera import take_photo
 from ai import ask_about_photo, look_at_photo
+from camera import take_photo
+from logging_config import setup_logging
 
+
+load_dotenv()
+
+setup_logging()
+
+logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 
@@ -22,27 +27,109 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    logger.info(
+        "Received /start from user %s",
+        update.effective_user.id,
+    )
+
     await update.message.reply_text(
-    "Hello! I am PiSight, your AI camera assistant.\n\n"
-    "/photo - Take a photo\n"
-    "/look - Describe what the camera sees\n"
-    "/ask <question> - Ask AI about what the camera sees"
-)
+        "Hello! I am VisionPi, your AI camera assistant.\n\n"
+        "/photo - Take a photo\n"
+        "/look - Describe what the camera sees\n"
+        "/ask <question> - Ask AI about what the camera sees"
+    )
 
 
 async def photo(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    await update.message.reply_text(
-        "Taking a photo..."
+    user_id = update.effective_user.id
+
+    logger.info(
+        "User %s requested a photo",
+        user_id,
     )
 
-    photo_path = take_photo()
+    try:
+        await update.message.reply_text(
+            "Taking a photo..."
+        )
 
-    with photo_path.open("rb") as photo_file:
-        await update.message.reply_photo(
-            photo=photo_file
+        photo_path = take_photo()
+
+        logger.info(
+            "Photo captured: %s",
+            photo_path,
+        )
+
+        with photo_path.open("rb") as photo_file:
+            await update.message.reply_photo(
+                photo=photo_file
+            )
+
+        logger.info(
+            "Photo sent to user %s",
+            user_id,
+        )
+
+    except Exception:
+        logger.exception(
+            "Failed to take or send photo for user %s",
+            user_id,
+        )
+
+        await update.message.reply_text(
+            "❌ Failed to take a photo."
+        )
+
+
+async def look(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    user_id = update.effective_user.id
+
+    logger.info(
+        "User %s requested /look",
+        user_id,
+    )
+
+    try:
+        await update.message.reply_text(
+            "Taking a photo..."
+        )
+
+        photo_path = take_photo()
+
+        logger.info(
+            "Photo captured for /look: %s",
+            photo_path,
+        )
+
+        await update.message.reply_text(
+            "Analyzing the photo..."
+        )
+
+        description = look_at_photo(photo_path)
+
+        logger.info(
+            "AI analysis completed for user %s",
+            user_id,
+        )
+
+        await update.message.reply_text(
+            description
+        )
+
+    except Exception:
+        logger.exception(
+            "Failed to process /look for user %s",
+            user_id,
+        )
+
+        await update.message.reply_text(
+            "❌ Failed to analyze the photo."
         )
 
 
@@ -50,56 +137,74 @@ async def ask(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    user_id = update.effective_user.id
+
     question = " ".join(context.args).strip()
 
     if not question:
+        logger.info(
+            "User %s sent /ask without a question",
+            user_id,
+        )
+
         await update.message.reply_text(
             "Please provide a question.\n\n"
             "Example:\n"
             "/ask What is in front of the camera?"
         )
+
         return
 
-    await update.message.reply_text(
-        "Taking a photo..."
-    )
-
-    photo_path = take_photo()
-
-    await update.message.reply_text(
-        "Analyzing the photo..."
-    )
-
-    answer = ask_about_photo(
-        photo_path,
+    logger.info(
+        "User %s requested /ask: %s",
+        user_id,
         question,
     )
 
-    await update.message.reply_text(
-        answer
-    )
+    try:
+        await update.message.reply_text(
+            "Taking a photo..."
+        )
 
-async def look(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    await update.message.reply_text(
-        "📷 Taking a photo..."
-    )
+        photo_path = take_photo()
 
-    photo_path = take_photo()
+        logger.info(
+            "Photo captured for /ask: %s",
+            photo_path,
+        )
 
-    await update.message.reply_text(
-        "🤖 Analyzing the photo..."
-    )
+        await update.message.reply_text(
+            "Analyzing the photo..."
+        )
 
-    description = look_at_photo(photo_path)
+        answer = ask_about_photo(
+            photo_path,
+            question,
+        )
 
-    await update.message.reply_text(
-        description
-    )
+        logger.info(
+            "AI analysis completed for user %s",
+            user_id,
+        )
+
+        await update.message.reply_text(
+            answer
+        )
+
+    except Exception:
+        logger.exception(
+            "Failed to process /ask for user %s",
+            user_id,
+        )
+
+        await update.message.reply_text(
+            "❌ Failed to analyze the photo."
+        )
+
 
 def main():
+    logger.info("Starting VisionPi bot")
+
     application = (
         Application.builder()
         .token(TELEGRAM_BOT_TOKEN)
@@ -115,17 +220,18 @@ def main():
     )
 
     application.add_handler(
-        CommandHandler("ask", ask)
+        CommandHandler("look", look)
     )
 
     application.add_handler(
-    CommandHandler("look", look)
+        CommandHandler("ask", ask)
     )
 
-    print("VisionPi bot started.")
+    logger.info("VisionPi bot started")
 
     application.run_polling()
 
 
 if __name__ == "__main__":
     main()
+
