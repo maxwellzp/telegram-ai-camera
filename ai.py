@@ -31,7 +31,7 @@ def image_to_base64(photo_path: Path) -> str:
     return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
-def ask_about_photo(photo_path: Path, question: str) -> str:
+def _analyze_photo(photo_path: Path, prompt: str) -> str:
     image_data = image_to_base64(photo_path)
 
     response = client.responses.create(
@@ -42,7 +42,7 @@ def ask_about_photo(photo_path: Path, question: str) -> str:
                 "content": [
                     {
                         "type": "input_text",
-                        "text": question,
+                        "text": prompt,
                     },
                     {
                         "type": "input_image",
@@ -56,35 +56,24 @@ def ask_about_photo(photo_path: Path, question: str) -> str:
     )
 
     return response.output_text
+
+
+def ask_about_photo(photo_path: Path, question: str) -> str:
+    return _analyze_photo(
+        photo_path,
+        question,
+    )
 
 
 def look_at_photo(photo_path: Path) -> str:
-    image_data = image_to_base64(photo_path)
-
-    response = client.responses.create(
-        model=MODEL,
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "Describe what you see in this image. "
-                            "Focus on the main objects, people, "
-                            "and anything important or unusual. "
-                            "Be concise."
-                        ),
-                    },
-                    {
-                        "type": "input_image",
-                        "image_url": (
-                            f"data:image/jpeg;base64,{image_data}"
-                        ),
-                    },
-                ],
-            }
-        ],
+    prompt = (
+        "Describe what you see in this image. "
+        "Focus on the main objects, people, "
+        "and anything important or unusual. "
+        "Be concise."
     )
 
-    return response.output_text
+    return _analyze_photo(
+        photo_path,
+        prompt,
+    )
