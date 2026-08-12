@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+from datetime import datetime
 
 from dotenv import load_dotenv
 from telegram import Update
@@ -20,7 +21,10 @@ from services import (
 )
 from motion_processor import MotionProcessor
 from camera_service import CameraService
+from photo_storage import PhotoStorage
 
+from photo_cleanup import PhotoCleanupTask
+from photo_storage import PhotoStorage
 
 load_dotenv()
 
@@ -42,6 +46,8 @@ motion_consumer_task = None
 motion_processor = None
 shutdown_event = None
 
+photo_storage = None
+photo_cleanup_task = None
 
 async def start(
     update: Update,
@@ -60,7 +66,8 @@ async def start(
         "/look - Describe what the camera sees\n"
         "/ask <question> - Ask AI about what the camera sees\n"
         "/watch - Start motion detection\n"
-        "/stop - Stop motion detection"
+        "/stop - Stop motion detection\n"
+        "/storage - Show photo storage information"
     )
 
 
@@ -362,10 +369,23 @@ async def post_init(
     global motion_consumer_task
     global motion_processor
     global camera_service
+    global photo_storage
+    global photo_cleanup_task
 
     application = application_instance
 
     motion_queue = asyncio.Queue()
+
+    photo_storage = PhotoStorage()
+
+    # Cleanup immediately at startup.
+    photo_storage.cleanup()
+
+    photo_cleanup_task = PhotoCleanupTask(
+        photo_storage
+    )
+
+    await photo_cleanup_task.start()
 
     camera_service = CameraService()
     camera_service.start()
@@ -389,6 +409,7 @@ async def post_shutdown(
     global watcher_thread
     global motion_consumer_task
     global camera_service
+    global photo_cleanup_task
 
     logger.info(
         "Starting VisionPi graceful shutdown"
@@ -436,6 +457,10 @@ async def post_shutdown(
 
         motion_consumer_task = None
 
+    if photo_cleanup_task is not None:
+        await photo_cleanup_task.stop()
+        photo_cleanup_task = None
+
     # Stop camera
     if camera_service is not None:
         logger.info(
@@ -468,6 +493,66 @@ def clear_motion_queue():
             cleared,
         )
 
+async def storage(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    user_id = update.effective_user.id
+
+    logger.info(
+        "User %s requested /storage",
+        user_id,
+    )
+
+    try:
+        stats = photo_storage.get_stats()
+
+        size = photo_storage.format_size(
+            stats["size_bytes"]
+        )
+
+        oldest_photo = stats["oldest_photo"]
+
+        if oldest_photo is None:
+            oldest_text = "None"
+        else:
+            modified_time = datetime.fromtimestamp(
+                oldest_photo.stat().st_mtime
+            )
+
+            oldest_text = modified_time.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+        message = (
+            "📁 VisionPi storage\n\n"
+            f"Photos: {stats['count']} / "
+            f"{stats['max_photos']}\n"
+            f"Storage used: {size}\n"
+            f"Retention: "
+            f"{stats['retention_hours']} hours\n"
+            f"Oldest photo: {oldest_text}"
+        )
+
+        await update.message.reply_text(
+            message
+        )
+
+        logger.info(
+            "Storage information sent to user %s",
+            user_id,
+        )
+
+    except Exception:
+        logger.exception(
+            "Failed to get storage information "
+            "for user %s",
+            user_id,
+        )
+
+        await update.message.reply_text(
+            "❌ Failed to get storage information."
+        )
 
 def main():
     logger.info(
@@ -504,6 +589,10 @@ def main():
     application_instance.add_handler(
         CommandHandler("stop", stop_watch)
     )
+
+    application_instance.add_handler(
+    CommandHandler("storage", storage)
+)
 
     logger.info(
         "VisionPi bot started"
