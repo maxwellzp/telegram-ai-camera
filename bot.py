@@ -17,8 +17,8 @@ from services import (
     analyze_photo,
     capture_photo,
     describe_photo,
-    save_motion_frame,
 )
+from motion_processor import MotionProcessor
 from camera_service import CameraService
 
 
@@ -39,6 +39,8 @@ motion_queue = None
 watch_chat_id = None
 
 motion_consumer_task = None
+motion_processor = None
+shutdown_event = None
 
 
 async def start(
@@ -117,7 +119,9 @@ async def look(
             "📷 Taking a photo..."
         )
 
-        photo_path = capture_photo()
+        photo_path = capture_photo(
+            camera_service
+            )
 
         await update.message.reply_text(
             "🤖 Analyzing the photo..."
@@ -177,7 +181,7 @@ async def ask(
             "📷 Taking a photo..."
         )
 
-        photo_path = capture_photo()
+        photo_path = capture_photo(camera_service)
 
         await update.message.reply_text(
             "🤖 Analyzing the photo..."
@@ -251,29 +255,9 @@ async def process_motion_events():
         chat_id, frame = await motion_queue.get()
 
         try:
-            logger.info(
-                "Processing motion event for chat %s",
+            await motion_processor.process(
                 chat_id,
-            )
-
-            photo_path = save_motion_frame(
-                frame
-            )
-
-            await application.bot.send_message(
-                chat_id=chat_id,
-                text="🚨 Motion detected!",
-            )
-
-            with photo_path.open("rb") as photo_file:
-                await application.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=photo_file,
-                )
-
-            logger.info(
-                "Motion notification sent to chat %s",
-                chat_id,
+                frame,
             )
 
         except Exception:
@@ -345,9 +329,20 @@ async def stop_watch(
 
     watcher.stop()
 
+    if (
+        watcher_thread is not None
+        and watcher_thread.is_alive()
+    ):
+        await asyncio.to_thread(
+            watcher_thread.join,
+            2.0,
+        )
+
     watcher = None
     watcher_thread = None
     watch_chat_id = None
+
+    clear_motion_queue()
 
     logger.info(
         "Motion watcher stopped by chat %s",
@@ -365,6 +360,7 @@ async def post_init(
     global application
     global motion_queue
     global motion_consumer_task
+    global motion_processor
     global camera_service
 
     application = application_instance
@@ -374,6 +370,10 @@ async def post_init(
     camera_service = CameraService()
     camera_service.start()
 
+    motion_processor = MotionProcessor(
+        bot=application.bot,
+    )
+
     motion_consumer_task = asyncio.create_task(
         process_motion_events()
     )
@@ -382,18 +382,104 @@ async def post_init(
         "VisionPi initialization completed"
     )
 
+async def post_shutdown(
+    application_instance: Application,
+):
+    global watcher
+    global watcher_thread
+    global motion_consumer_task
+    global camera_service
+
+    logger.info(
+        "Starting VisionPi graceful shutdown"
+    )
+
+    # Stop motion watcher
+    if watcher is not None:
+        logger.info(
+            "Stopping motion watcher"
+        )
+
+        watcher.stop()
+
+    # Wait for watcher thread to finish
+    if (
+        watcher_thread is not None
+        and watcher_thread.is_alive()
+    ):
+        logger.info(
+            "Waiting for motion watcher thread"
+        )
+
+        await asyncio.to_thread(
+            watcher_thread.join,
+            5.0,
+        )
+
+    watcher = None
+    watcher_thread = None
+
+    # Stop motion consumer
+    if motion_consumer_task is not None:
+        logger.info(
+            "Stopping motion event consumer"
+        )
+
+        motion_consumer_task.cancel()
+
+        try:
+            await motion_consumer_task
+        except asyncio.CancelledError:
+            logger.info(
+                "Motion event consumer stopped"
+            )
+
+        motion_consumer_task = None
+
+    # Stop camera
+    if camera_service is not None:
+        logger.info(
+            "Stopping camera service"
+        )
+
+        camera_service.stop()
+
+    logger.info(
+        "VisionPi graceful shutdown completed"
+    )
+
+def clear_motion_queue():
+    if motion_queue is None:
+        return
+
+    cleared = 0
+
+    while True:
+        try:
+            motion_queue.get_nowait()
+            motion_queue.task_done()
+            cleared += 1
+        except asyncio.QueueEmpty:
+            break
+
+    if cleared:
+        logger.info(
+            "Cleared %s pending motion events",
+            cleared,
+        )
+
 
 def main():
     logger.info(
         "Starting VisionPi bot"
     )
 
-    application_instance = (
-        Application.builder()
-        .token(TELEGRAM_BOT_TOKEN)
-        .post_init(post_init)
-        .build()
-    )
+    application_instance = (Application.builder()
+    .token(TELEGRAM_BOT_TOKEN)
+    .post_init(post_init)
+    .post_shutdown(post_shutdown)
+    .build()
+)
 
     application_instance.add_handler(
         CommandHandler("start", start)
