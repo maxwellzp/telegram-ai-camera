@@ -7,7 +7,12 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from PIL import Image
 
-from config import AI_IMAGE_SIZE, JPEG_QUALITY, MODEL
+from config import (
+    AI_IMAGE_SIZE,
+    JPEG_QUALITY,
+    MODEL,
+    MOTION_AI_PROMPT,
+)
 
 
 load_dotenv()
@@ -77,3 +82,37 @@ def look_at_photo(photo_path: Path) -> str:
         photo_path,
         prompt,
     )
+
+def analyze_motion(
+    photo_path: Path,
+) -> tuple[bool, str]:
+    prompt = MOTION_AI_PROMPT
+
+    result = _analyze_photo(
+        photo_path,
+        prompt,
+    )
+
+    lines = [
+        line.strip()
+        for line in result.splitlines()
+        if line.strip()
+    ]
+
+    alert = False
+    description = result
+
+    for line in lines:
+        if line.startswith("ALERT:"):
+            value = line.split(
+                ":", 1
+            )[1].strip().upper()
+
+            alert = value == "YES"
+
+        elif line.startswith("DESCRIPTION:"):
+            description = line.split(
+                ":", 1
+            )[1].strip()
+
+    return alert, description
