@@ -5,18 +5,21 @@ from PIL import Image
 import cv2
 
 from config import JPEG_QUALITY, PHOTO_DIR
+from ai import (
+    analyze_motion,
+    ask_about_photo,
+    look_at_photo,
+)
 
-from ai import ask_about_photo, look_at_photo
-from camera import take_photo
 
 
 logger = logging.getLogger(__name__)
 
 
-def capture_photo() -> Path:
+def capture_photo(camera_service) -> Path:
     logger.info("Capturing photo")
 
-    photo_path = take_photo()
+    photo_path = camera_service.capture_photo()
 
     logger.info(
         "Photo captured: %s",
@@ -83,3 +86,23 @@ def save_motion_frame(frame) -> Path:
     )
 
     return photo_path
+
+def analyze_motion_photo(
+    photo_path: Path,
+) -> tuple[bool, str]:
+    logger.info(
+        "Analyzing motion photo: %s",
+        photo_path,
+    )
+
+    alert, description = analyze_motion(
+        photo_path
+    )
+
+    logger.info(
+        "Motion AI analysis completed: "
+        "alert=%s",
+        alert,
+    )
+
+    return alert, description
