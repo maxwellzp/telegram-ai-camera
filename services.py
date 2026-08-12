@@ -1,5 +1,10 @@
 import logging
 from pathlib import Path
+from datetime import datetime
+from PIL import Image
+import cv2
+
+from config import JPEG_QUALITY, PHOTO_DIR
 
 from ai import ask_about_photo, look_at_photo
 from camera import take_photo
@@ -54,3 +59,27 @@ def describe_photo(photo_path: Path) -> str:
 
     return description
 
+def save_motion_frame(frame) -> Path:
+    timestamp = datetime.now().strftime(
+        "%Y%m%d_%H%M%S"
+    )
+
+    photo_path = (
+        PHOTO_DIR / f"motion_{timestamp}.jpg"
+    )
+
+    cv2.imwrite(
+        str(photo_path),
+        frame,
+        [
+            cv2.IMWRITE_JPEG_QUALITY,
+            JPEG_QUALITY,
+        ],
+    )
+
+    logger.info(
+        "Motion photo saved: %s",
+        photo_path,
+    )
+
+    return photo_path
